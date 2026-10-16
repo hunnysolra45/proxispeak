@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 const WIDTH = 800;
 const HEIGHT = 520;
 const RADIUS = 100;
-const SPEED = 6;
+const SPEED = 3;
 
 const otherUsers = [
   { id: 2, name: "Asha", x: 250, y: 150, color: "#f59e0b" },
@@ -15,9 +15,11 @@ export default function WorldCanvas({ onNearbyChange }) {
   const canvasRef = useRef(null);
   const me = useRef({ x: 400, y: 260 });
   const keys = useRef({});
+  const target = useRef(null); // NEW: the spot where you clicked
 
   useEffect(() => {
-    const ctx = canvasRef.current.getContext("2d");
+    const canvas = canvasRef.current; // NEW
+    const ctx = canvas.getContext("2d");
     let frameId;
     let lastNearby = "";
 
@@ -28,15 +30,47 @@ export default function WorldCanvas({ onNearbyChange }) {
     const handleUp = (e) => {
       keys.current[e.key.toLowerCase()] = false;
     };
+
+    // NEW: when you click the canvas, remember that spot
+    const handleClick = (e) => {
+      target.current = {
+        x: Math.max(20, Math.min(WIDTH - 20, e.offsetX)),
+        y: Math.max(20, Math.min(HEIGHT - 20, e.offsetY)),
+      };
+    };
+
     window.addEventListener("keydown", handleDown);
     window.addEventListener("keyup", handleUp);
+    canvas.addEventListener("click", handleClick); // NEW
 
     function update() {
       const k = keys.current;
+      const usingKeys =
+        k["w"] || k["s"] || k["a"] || k["d"] ||
+        k["arrowup"] || k["arrowdown"] || k["arrowleft"] || k["arrowright"];
+
+      // NEW: pressing a key cancels the click target
+      if (usingKeys) target.current = null;
+
       if (k["w"] || k["arrowup"]) me.current.y -= SPEED;
       if (k["s"] || k["arrowdown"]) me.current.y += SPEED;
       if (k["a"] || k["arrowleft"]) me.current.x -= SPEED;
       if (k["d"] || k["arrowright"]) me.current.x += SPEED;
+
+      // NEW: walk toward the clicked spot
+      if (target.current) {
+        const dx = target.current.x - me.current.x;
+        const dy = target.current.y - me.current.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= SPEED) {
+          me.current.x = target.current.x;
+          me.current.y = target.current.y;
+          target.current = null; // arrived
+        } else {
+          me.current.x += (dx / dist) * SPEED;
+          me.current.y += (dy / dist) * SPEED;
+        }
+      }
 
       me.current.x = Math.max(20, Math.min(WIDTH - 20, me.current.x));
       me.current.y = Math.max(20, Math.min(HEIGHT - 20, me.current.y));
@@ -72,6 +106,16 @@ export default function WorldCanvas({ onNearbyChange }) {
       ctx.strokeStyle = "rgba(34,197,94,0.6)";
       ctx.stroke();
 
+      // NEW: small ring showing where you are walking to
+      if (target.current) {
+        ctx.beginPath();
+        ctx.arc(target.current.x, target.current.y, 8, 0, Math.PI * 2);
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+
       otherUsers.forEach((u) => {
         const isNear = nearby.some((n) => n.id === u.id);
         drawAvatar(u.x, u.y, isNear ? u.color : "#64748b", u.name);
@@ -97,6 +141,7 @@ export default function WorldCanvas({ onNearbyChange }) {
       cancelAnimationFrame(frameId);
       window.removeEventListener("keydown", handleDown);
       window.removeEventListener("keyup", handleUp);
+      canvas.removeEventListener("click", handleClick); // NEW
     };
   }, [onNearbyChange]);
 
